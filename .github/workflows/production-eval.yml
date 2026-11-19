@@ -1,0 +1,59 @@
+name: Production evaluation
+
+# Moment 3: score real production conversations from traces with the same evaluators.
+# Failures become golden-dataset candidates in a pull request for a domain expert to review.
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    environment: prod-monitor   # read-only scoring, no approval
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/azd-setup
+        with:
+          environment: prod
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          location: ${{ vars.AZURE_LOCATION }}
+          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
+          model: ${{ vars.FOUNDRY_MODEL_NAME }}
+          project-endpoint: ${{ vars.FOUNDRY_PROJECT_ENDPOINT }}
+          project-id: ${{ vars.AZURE_AI_PROJECT_ID }}
+
+      - name: Score the last 24 hours of production conversations
+        run: |
+          azd ai eval create production-traces --no-prompt
+          azd ai eval run start --eval production-traces --no-prompt | tee -a "$GITHUB_STEP_SUMMARY"
+          azd ai eval run output export --eval production-traces --output-file "$RUNNER_TEMP/production.json" --no-prompt
+
+      - name: Add failing conversations to the golden dataset for review
+        id: harvest
+        run: |
+          python scripts/feedback.py harvest "$RUNNER_TEMP/production.json" | tee -a "$GITHUB_STEP_SUMMARY"
+          rm -f "$RUNNER_TEMP/production.json"
+          if git diff --quiet datasets/golden.jsonl; then echo "changed=false" >> "$GITHUB_OUTPUT"; else echo "changed=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Open a review pull request for the domain expert
+        if: steps.harvest.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="review/production-$(date +%Y%m%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add datasets/golden.jsonl
+          git commit -m "Review failing production conversations ($(date +%F))"
+          git push -u origin "$branch"
+          gh pr create --label expert-review --title "Expert review: failing production conversations $(date +%F)" --body-file .github/review-instructions.md

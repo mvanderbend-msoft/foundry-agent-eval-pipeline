@@ -1,0 +1,76 @@
+# One evaluator set, three moments (see README):
+#   pre-launch-simulation  -> before real users reach the agent
+#   golden-gate            -> on every change to prompt, tools or model; blocks the release
+#   production-traces      -> real conversations from Application Insights traces
+# Change the shared evaluators in all three evals together.
+
+datasets:
+  - name: golden
+    file: ../datasets/golden.jsonl
+  - name: scenarios
+    file: ../datasets/scenarios.jsonl
+
+evaluators:
+  - name: contoso-order-policy
+    source: ./evaluators/contoso-order-policy.json
+    displayName: Contoso order policy
+    categories:
+      - quality
+      - agents
+    supportedEvaluationLevels:
+      - turn
+      - conversation
+
+evals:
+  - name: pre-launch-simulation
+    description: Simulated customers talk to the agent before real users do.
+    dataset: scenarios
+    evaluationLevel: conversation
+    evaluators:
+      - evaluator: contoso-order-policy
+        initializationParameters:
+          model: gpt-4.1
+      - evaluator: builtin.tool_use_quality
+        initializationParameters:
+          model: gpt-4.1
+    target:
+      type: agent
+      name: ContosoOrderAgent
+    simulation:
+      model: gpt-4.1
+      numConversations: 1
+      maxTurns: 4
+
+  - name: golden-gate
+    description: Signed-off cases. Runs on every change and blocks the release below the pass rate.
+    dataset: golden
+    evaluationLevel: turn
+    evaluators:
+      - evaluator: contoso-order-policy
+        initializationParameters:
+          model: gpt-4.1
+        # The judge must see the tool calls, not only the final text.
+        dataMapping:
+          response: "{{sample.output_items}}"
+      - evaluator: builtin.tool_use_quality
+        initializationParameters:
+          model: gpt-4.1
+    target:
+      type: agent
+      name: ContosoOrderAgent
+
+  - name: production-traces
+    description: Scores real production conversations from Application Insights traces.
+    source:
+      type: traces
+      lookbackHours: 24
+      maxTraces: 50
+      agentName: ContosoOrderAgent
+    evaluationLevel: turn
+    evaluators:
+      - evaluator: contoso-order-policy
+        initializationParameters:
+          model: gpt-4.1
+      - evaluator: builtin.tool_use_quality
+        initializationParameters:
+          model: gpt-4.1

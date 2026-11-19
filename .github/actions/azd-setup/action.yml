@@ -1,0 +1,45 @@
+name: azd setup
+description: Install azd and the Foundry extensions, sign in with OIDC and create the azd environment.
+
+inputs:
+  environment: { required: true }
+  client-id: { required: true }
+  tenant-id: { required: true }
+  subscription-id: { required: true }
+  location: { required: true }
+  resource-group: { required: true }
+  model: { required: true }
+  project-endpoint: { required: true }
+  project-id: { required: true }
+
+runs:
+  using: composite
+  steps:
+    - uses: Azure/setup-azd@v2
+
+    - name: Install Foundry extensions
+      shell: bash
+      run: azd ext install azure.ai.agents azure.ai.evaluations
+
+    - name: Sign in to Azure with OIDC (no stored secrets)
+      uses: azure/login@v2
+      with:
+        client-id: ${{ inputs.client-id }}
+        tenant-id: ${{ inputs.tenant-id }}
+        subscription-id: ${{ inputs.subscription-id }}
+
+    - name: Create azd environment
+      shell: bash
+      run: |
+        set -euo pipefail
+        azd config set auth.useAzCliAuth true
+        azd env new "${{ inputs.environment }}" --no-prompt
+        azd env set AZURE_SUBSCRIPTION_ID "${{ inputs.subscription-id }}"
+        azd env set AZURE_TENANT_ID "${{ inputs.tenant-id }}"
+        azd env set AZURE_LOCATION "${{ inputs.location }}"
+        azd env set AZURE_RESOURCE_GROUP "${{ inputs.resource-group }}"
+        azd env set FOUNDRY_MODEL_NAME "${{ inputs.model }}"
+        azd env set FOUNDRY_PROJECT_ENDPOINT "${{ inputs.project-endpoint }}"
+        azd env set AZURE_AI_PROJECT_ENDPOINT "${{ inputs.project-endpoint }}"
+        azd env set AZURE_AI_PROJECT_ID "${{ inputs.project-id }}"
+        echo "AZURE_DEV_USER_AGENT=github_actions_eval_pipeline" >> "$GITHUB_ENV"

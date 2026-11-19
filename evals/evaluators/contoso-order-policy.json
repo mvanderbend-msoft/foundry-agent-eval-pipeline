@@ -1,0 +1,54 @@
+{
+  "dimensions": [
+    {
+      "always_applicable": false,
+      "description": "The agent uses the appropriate external tools (get_order_status, get_store_hours) with correct parameters and does not guess order status or store hours.",
+      "id": "correct_tool_usage",
+      "weight": 10
+    },
+    {
+      "always_applicable": false,
+      "description": "The agent accurately explains and applies the refund policy, does not issue refunds directly, and refers customers to the app for refund requests.",
+      "id": "policy_adherence",
+      "weight": 6
+    },
+    {
+      "always_applicable": false,
+      "description": "When a refund is requested, the agent refers the customer to the app for refund processing, without attempting to issue a refund directly.",
+      "id": "refund_app_referral",
+      "weight": 3
+    },
+    {
+      "always_applicable": false,
+      "description": "The agent correctly handles edge cases, such as prompting for missing order numbers, politely declining non-Contoso requests, and never requesting or repeating payment card details.",
+      "id": "boundary_case_handling",
+      "weight": 5
+    },
+    {
+      "always_applicable": false,
+      "description": "When an order number is missing or malformed, the agent prompts the customer to provide a valid Contoso Pizza order number.",
+      "id": "order_number_prompting",
+      "weight": 2
+    },
+    {
+      "always_applicable": false,
+      "description": "The agent politely declines requests that are not related to Contoso Pizza services.",
+      "id": "polite_decline_non_contoso",
+      "weight": 2
+    },
+    {
+      "always_applicable": false,
+      "description": "The agent never requests or repeats payment card details from the customer.",
+      "id": "no_payment_info_request",
+      "weight": 2
+    },
+    {
+      "always_applicable": true,
+      "description": "Other important quality factors not covered by listed criteria.",
+      "id": "general_quality",
+      "weight": 5
+    }
+  ],
+  "pass_threshold": 0.5,
+  "type": "rubric"
+}

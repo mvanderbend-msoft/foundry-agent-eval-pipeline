@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+infra:
+    provider: microsoft.foundry
+name: foundry-agent-eval-pipeline
+requiredVersions:
+    extensions:
+        azure.ai.agents: '>=1.0.0-beta.4'
+services:
+    ai-project:
+        endpoint: ${FOUNDRY_PROJECT_ENDPOINT}
+        host: azure.ai.project
+    order-agent:
+        codeConfiguration:
+            dependencyResolution: remote_build
+            entryPoint: main.py
+            runtime: python_3_13
+        container:
+            resources:
+                cpu: "0.5"
+                memory: 1Gi
+        description: Contoso Pizza order assistant (order status, store hours, refund policy).
+        environmentVariables:
+            - name: AZURE_AI_MODEL_DEPLOYMENT_NAME
+              value: ${FOUNDRY_MODEL_NAME}
+        host: azure.ai.agent
+        kind: hosted
+        language: python
+        name: ContosoOrderAgent
+        project: src/order-agent
+        protocols:
+            - protocol: responses
+              version: 2.0.0
+        uses:
+            - ai-project
+    order-agent-evals:
+        $ref: ./evals/azure.eval.yaml
+        host: azure.ai.eval
+        uses:
+            - ai-project
+            - order-agent

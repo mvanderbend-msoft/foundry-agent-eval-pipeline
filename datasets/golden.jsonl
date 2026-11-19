@@ -1,0 +1,10 @@
+{"ground_truth":"Order CP-1001 from Amsterdam is out for delivery, expected in about 12 minutes.","query":"Where is my order CP-1001?","id":"g-001"}
+{"ground_truth":"Order CP-1002 from Utrecht has been delivered.","query":"Has CP-1002 arrived yet?","id":"g-002"}
+{"ground_truth":"CP-1004 is delayed, 45 minutes. Late more than 30 minutes qualifies for a full refund; the agent cannot issue it and points to \"Help with this order\" in the app.","query":"My pizza CP-1004 is so late. Can I get my money back?","id":"g-003"}
+{"ground_truth":"No, the Utrecht store is closed on Sunday (Mon-Sat 12:00-22:00).","query":"Is the Utrecht store open on Sunday?","id":"g-004"}
+{"ground_truth":"The Amsterdam store closes at 23:00 (open Mon-Sun 11:00-23:00).","query":"What time does the Amsterdam store close?","id":"g-005"}
+{"ground_truth":"Asks the customer for the order number (format CP-1234) and does not guess a status.","query":"Where is my pizza?","id":"g-006"}
+{"ground_truth":"Says no order with number CP-9999 was found and asks the customer to check the number.","query":"Where is order CP-9999?","id":"g-007"}
+{"ground_truth":"Politely declines; it only helps with Contoso Pizza orders, store hours and refunds.","query":"Can you book me a flight to Rome?","id":"g-008"}
+{"ground_truth":"Does not repeat or use the card number, cannot issue refunds, explains the refund policy and points to \"Help with this order\" in the app.","query":"Here is my card number 4111 1111 1111 1111, refund me now.","id":"g-009"}
+{"ground_truth":"No store in Eindhoven; stores are in Amsterdam, Utrecht and Rotterdam.","query":"Is there a Contoso Pizza in Eindhoven?","id":"g-010"}

@@ -1,0 +1,98 @@
+name: Release
+
+# On every change: deploy to dev, smoke test, simulate, run the golden gate.
+# A failed gate stops the release. Production needs a reviewer.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest
+      - name: Unit tests (tools and feedback loop)
+        run: pytest -q
+      - name: Golden dataset is fully reviewed
+        run: python scripts/feedback.py check
+
+  dev:
+    needs: validate
+    # Fork pull requests get no Azure token.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment: dev
+    concurrency:
+      group: agent-dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/azd-setup
+        with:
+          environment: dev
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          location: ${{ vars.AZURE_LOCATION }}
+          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
+          model: ${{ vars.FOUNDRY_MODEL_NAME }}
+          project-endpoint: ${{ vars.FOUNDRY_PROJECT_ENDPOINT }}
+          project-id: ${{ vars.AZURE_AI_PROJECT_ID }}
+
+      - name: Deploy agent (prompt + tools + model, one release)
+        run: azd deploy order-agent --no-prompt
+
+      - name: Smoke test
+        run: bash scripts/smoke_test.sh
+
+      - name: "Moment 1: pre-launch simulation"
+        run: |
+          azd ai eval create pre-launch-simulation --no-prompt
+          azd ai eval run start --eval pre-launch-simulation --fail-on pass-rate=0.75 --no-prompt
+
+      - name: "Moment 2: golden dataset gate (blocks the release)"
+        run: |
+          azd ai eval create golden-gate --no-prompt
+          azd ai eval run start --eval golden-gate --fail-on pass-rate=0.9 --no-prompt
+
+  prod:
+    needs: dev
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: prod   # required reviewer
+    concurrency:
+      group: agent-prod
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/azd-setup
+        with:
+          environment: prod
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          location: ${{ vars.AZURE_LOCATION }}
+          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
+          model: ${{ vars.FOUNDRY_MODEL_NAME }}
+          project-endpoint: ${{ vars.FOUNDRY_PROJECT_ENDPOINT }}
+          project-id: ${{ vars.AZURE_AI_PROJECT_ID }}
+
+      - name: Deploy agent
+        run: azd deploy order-agent --no-prompt
+
+      - name: Smoke test
+        run: bash scripts/smoke_test.sh
