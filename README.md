@@ -45,7 +45,7 @@ After both fixes: 100%. Without human labels, you would have "fixed" a correct a
 
 ## Around the evaluations
 
-- **No stored secrets.** GitHub signs in to Azure with OpenID Connect (federated credentials for `dev`, `prod`, `prod-monitor` and pull requests). The identity has only **Foundry User** and **Contributor** on the two Foundry projects.
+- **No stored secrets.** GitHub signs in to Azure with OpenID Connect (federated credentials for `dev`, `prod`, `prod-monitor` and pull requests). The identity has only **Contributor** on the two Foundry projects (to deploy the agent) and **Foundry User** on the Foundry resource (to call the agent and the judge and simulator models).
 - **Smoke test** after every deployment ([`scripts/smoke_test.sh`](scripts/smoke_test.sh)): a real question that needs a tool call.
 - **Production needs an approval**: the `prod` GitHub environment has a required reviewer and only accepts `main`.
 - **Prompt, tools and model are released together.** [`instructions.py`](src/order-agent/instructions.py), [`tools.py`](src/order-agent/tools.py) and the model deployment (`FOUNDRY_MODEL_NAME`, wired in [`azure.yaml`](azure.yaml)) are all in Git. Any change to them is a PR that runs the gate.
