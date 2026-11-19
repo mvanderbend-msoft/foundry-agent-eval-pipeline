@@ -28,10 +28,6 @@ def read_jsonl(path: Path) -> list[dict]:
     return rows
 
 
-def write_jsonl(path: Path, rows: list[dict]) -> None:
-    path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
-
-
 def check(golden: Path = GOLDEN, scenarios: Path = SCENARIOS) -> list[str]:
     errors = []
     seen = set()
@@ -54,25 +50,42 @@ def check(golden: Path = GOLDEN, scenarios: Path = SCENARIOS) -> list[str]:
     return errors
 
 
+def _text(content) -> str:
+    if isinstance(content, str):
+        return content
+    return " ".join(c.get("text", "") for c in content or [] if isinstance(c, dict) and c.get("type") == "text")
+
+
 def _query(item: dict) -> str:
-    if item.get("query"):
-        q = item["query"]
-        return q if isinstance(q, str) else json.dumps(q, ensure_ascii=False)
-    for m in item.get("messages") or []:
-        if m.get("role") == "user":
-            c = m.get("content")
-            return c if isinstance(c, str) else json.dumps(c, ensure_ascii=False)
-    return ""
+    # Trace rows put the system prompt in front of the question in 'query'; the user turn in 'messages' is clean.
+    for m in reversed((item.get("messages") or [])[: item.get("response_start_index")]):
+        if m.get("role") == "user" and _text(m.get("content")).strip():
+            return _text(m["content"]).strip()
+    q = item.get("query")
+    return q if isinstance(q, str) or q is None else json.dumps(q, ensure_ascii=False)
+
+
+def _response(item: dict) -> str:
+    return item.get("sample.output_text") or item.get("response") or ""
+
+
+def _one_per_trace(items: list[dict]) -> list[dict]:
+    """One trace can yield several agent spans; keep the one that holds the final answer."""
+    best: dict[str, dict] = {}
+    for n, item in enumerate(items):
+        key = item.get("datasource_item", {}).get("trace_id") or f"row-{n}"
+        if key not in best or len(_response(item["datasource_item"])) > len(_response(best[key]["datasource_item"])):
+            best[key] = item
+    return list(best.values())
 
 
 def harvest(export_file: Path, golden: Path = GOLDEN, today: dt.date | None = None) -> int:
     """Append failing production rows as 'needs_review' cases. Returns how many were added."""
     today = today or dt.date.today()
-    rows = read_jsonl(golden)
-    known = {r.get("query") for r in rows}
+    known = {r.get("query") for r in read_jsonl(golden)}
     items = json.loads(export_file.read_text(encoding="utf-8")).get("items", [])
-    added = 0
-    for item in items:
+    new_rows = []
+    for item in _one_per_trace(items):
         failed = [r for r in item.get("results", []) if r.get("passed") is False]
         if not failed:
             continue
@@ -81,11 +94,10 @@ def harvest(export_file: Path, golden: Path = GOLDEN, today: dt.date | None = No
         if not query or query in known:
             continue
         known.add(query)
-        added += 1
-        rows.append({
-            "id": f"prod-{today:%Y%m%d}-{added:03d}",
+        new_rows.append({
+            "id": f"prod-{today:%Y%m%d}-{len(new_rows) + 1:03d}",
             "query": query,
-            "agent_response": src.get("sample.output_text") or src.get("response", ""),
+            "agent_response": _response(src),
             "judge_verdict": "fail",
             "judge_reason": " | ".join(f"{r.get('name')}: {r.get('reason', '')}" for r in failed),
             "trace_id": src.get("trace_id", ""),
@@ -93,9 +105,13 @@ def harvest(export_file: Path, golden: Path = GOLDEN, today: dt.date | None = No
             "human_verdict": "",
             "ground_truth": "",
         })
-    if added:
-        write_jsonl(golden, rows)
-    return added
+    if new_rows:
+        # Append only, so the review PR shows just the new cases.
+        text = golden.read_text(encoding="utf-8")
+        sep = "" if not text or text.endswith("\n") else "\n"
+        with golden.open("a", encoding="utf-8", newline="\n") as f:
+            f.write(sep + "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in new_rows))
+    return len(new_rows)
 
 
 def calibrate(golden: Path = GOLDEN) -> dict:

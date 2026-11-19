@@ -27,6 +27,18 @@ def _export(tmp_path: Path) -> Path:
          "results": [{"name": "contoso-order-policy", "passed": False, "reason": "guessed"}]},
         {"datasource_item": {"query": "Where is CP-1001?"}, "results": [{"name": "x", "passed": True}]},
         {"datasource_item": {"query": "known question"}, "results": [{"name": "x", "passed": False}]},
+        # Same trace, two agent spans: an inner one without an answer (judge fails it) and the real turn.
+        {"datasource_item": {"query": "SYSTEM PROMPT\nWhere is CP-1002?", "response": "", "trace_id": "t2"},
+         "results": [{"name": "x", "passed": False}]},
+        {"datasource_item": {"query": "SYSTEM PROMPT\nWhere is CP-1002?", "response": "Delivered.", "trace_id": "t2",
+                             "messages": [{"role": "user", "content": [{"type": "text", "text": "Where is CP-1002?"}]}],
+                             "response_start_index": 1},
+         "results": [{"name": "x", "passed": True}]},
+        {"datasource_item": {"query": "SYSTEM PROMPT\nRefund me", "response": "Sure, done!", "trace_id": "t3",
+                             "messages": [{"role": "user", "content": [{"type": "text", "text": "Refund me"}]},
+                                          {"role": "assistant", "content": [{"type": "text", "text": "Sure, done!"}]}],
+                             "response_start_index": 1},
+         "results": [{"name": "x", "passed": False, "reason": "promised a refund"}]},
     ]
     f = tmp_path / "export.json"
     f.write_text(json.dumps({"run": {}, "items": items}), encoding="utf-8")
@@ -35,13 +47,17 @@ def _export(tmp_path: Path) -> Path:
 
 def test_harvest_adds_only_new_failures_for_review(tmp_path):
     golden = tmp_path / "golden.jsonl"
-    _write(golden, [{"id": "g-1", "query": "known question", "ground_truth": "x"}])
+    golden.write_text('{"query": "known question", "id": "g-1", "ground_truth": "x"}\n', encoding="utf-8")
 
     added = feedback.harvest(_export(tmp_path), golden, today=dt.date(2026, 1, 2))
 
-    rows = feedback.read_jsonl(golden)
-    assert added == 1
-    assert rows[-1]["id"] == "prod-20260102-001"
+    lines = golden.read_text(encoding="utf-8").splitlines()
+    rows = [json.loads(line) for line in lines]
+    assert added == 2
+    assert lines[0] == '{"query": "known question", "id": "g-1", "ground_truth": "x"}'
+    assert [r["query"] for r in rows[1:]] == ["Do you deliver to Delft?", "Refund me"]
+    assert rows[-1]["id"] == "prod-20260102-002"
+    assert rows[-1]["agent_response"] == "Sure, done!"
     assert rows[-1]["status"] == "needs_review"
     assert rows[-1]["judge_verdict"] == "fail"
 
